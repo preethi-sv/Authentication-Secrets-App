@@ -36,7 +36,8 @@ const userSchema = new mongoose.Schema({
   password: String,
   // Step 18 - Each time, when user signs in with user, we save google id
   // to log in the user next time, instead of creating new user again.
-  googleId: String // Step 18
+  googleId: String, // Step 18
+  secret: String
 });
 
 // Step 4 - Add plugin to Schema.
@@ -103,17 +104,29 @@ app.get("/auth/google/secrets",
 });
 
 app.get("/login", function(req, res){
-  res.render("login");
+  if (req.isAuthenticated())
+    res.redirect("/secrets");
+  else
+    res.render("login");
 });
 
 app.get("/register", function(req, res){
-  res.render("register");
+  if (req.isAuthenticated())
+    res.redirect("/secrets");
+  else
+    res.render("register");
 });
 
 app.get("/secrets", function(req, res){
   // Step 8 - Check if authenticated and render Secrets page
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    User.find({"secret":  {$ne: null}}, function(err, foundUsers) {
+      if (err) {
+        console.log(err);
+      } else {
+        res.render("secrets", {usersWithSecrets: foundUsers});
+      }
+    });
   } else {
     res.redirect("/login");
   }
@@ -125,6 +138,37 @@ app.get("/logout", function(req, res){
   res.redirect("/");
 });
 
+app.get("/submit", function(req, res){
+  // Step 8 - Check if authenticated and render Secrets page
+  if (req.isAuthenticated()) {
+    res.render("submit");
+  } else {
+    res.redirect("/login");
+  }
+});
+
+app.post("/submit", function(req, res){
+  const submittedSecret = req.body.secret;
+  // req.user => The user entry in database except for the Hash
+  console.log(req.user.id);
+
+  User.findById(req.user.id, function(err, foundUser) {
+    if (err) {
+      console.log(err);
+    } else {
+      if (foundUser) {
+        // If user is found, we add the secret to the user and save
+        foundUser.secret = submittedSecret;
+        foundUser.save(function(err) {
+          if (!err)
+            res.redirect("/secrets");
+        });
+      }
+    }
+  });
+
+
+});
 app.post("/register", function(req, res) {
   // Step 6 - Register user
   User.register({username: req.body.username}, req.body.password, function(err, user) {
@@ -133,7 +177,7 @@ app.post("/register", function(req, res) {
       res.redirect("/register");
     }
     else {
-      passport.authenticate("local")(req, res, function() {
+      passport.authenticate("local", {failureRedirect: "/register"})(req, res, function() {
         res.redirect("/secrets");
       });
     }
@@ -150,13 +194,19 @@ app.post("/login", function(req, res) {
   req.login(user, function(err) {
     if (err) {
       console.log(err);
+      res.redirect("/login");
     } else {
-      passport.authenticate("local")(req, res, function() {
+      passport.authenticate("local", {failureRedirect: "/login"})(req, res, function() {
         res.redirect("/secrets");
       });
-    }
+  }
   });
 
+});
+
+// To handle unnamed routes
+app.get('*', function(req, res) {
+  res.render("error");
 });
 
 app.listen(3000, function() {
